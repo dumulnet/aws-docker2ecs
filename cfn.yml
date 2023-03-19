@@ -1,0 +1,557 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  CloudMap:
+    Properties:
+      Description: Service Map for Docker Compose project docker2ecs
+      Name: docker2ecs.local
+      Vpc: vpc-04907ae4087ee137d
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+  Cluster:
+    Properties:
+      ClusterName: docker2ecs
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+    Type: AWS::ECS::Cluster
+  LoadBalancer:
+    Properties:
+      Scheme: internet-facing
+      SecurityGroups:
+      - Ref: YelbnetworkNetwork
+      Subnets:
+      - subnet-048279ef1cc125c3d
+      - subnet-04867072f7e3ec9fe
+      - subnet-0f7fd70eef6ce9a3a
+      - subnet-0fa7f1215f585d732
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      Type: application
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  LogGroup:
+    Properties:
+      LogGroupName: /docker-compose/docker2ecs
+    Type: AWS::Logs::LogGroup
+  RedisserverService:
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: YelbnetworkNetwork
+          Subnets:
+          - subnet-048279ef1cc125c3d
+          - subnet-04867072f7e3ec9fe
+          - subnet-0f7fd70eef6ce9a3a
+          - subnet-0fa7f1215f585d732
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - RedisserverServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: redis-server
+      TaskDefinition:
+        Ref: RedisserverTaskDefinition
+    Type: AWS::ECS::Service
+  RedisserverServiceDiscoveryEntry:
+    Properties:
+      Description: '"redis-server" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: redis-server
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  RedisserverTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - ap-northeast-2.compute.internal
+        - docker2ecs.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: Redisserver_ResolvConf_InitContainer
+      - DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Redisserver_ResolvConf_InitContainer
+        Essential: true
+        Image: docker.io/library/redis:4.0.2@sha256:cd277716dbff2c0211c8366687d275d2b53112fecbf9d6c86e9853edb0900956
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: redis-server
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: RedisserverTaskExecutionRole
+      Family: docker2ecs-redis-server
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+    Type: AWS::ECS::TaskDefinition
+  RedisserverTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: redis-server
+    Type: AWS::IAM::Role
+  YelbappserverService:
+    DependsOn:
+    - YelbdbService
+    - RedisserverService
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: YelbnetworkNetwork
+          Subnets:
+          - subnet-048279ef1cc125c3d
+          - subnet-04867072f7e3ec9fe
+          - subnet-0f7fd70eef6ce9a3a
+          - subnet-0fa7f1215f585d732
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - YelbappserverServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-appserver
+      TaskDefinition:
+        Ref: YelbappserverTaskDefinition
+    Type: AWS::ECS::Service
+  YelbappserverServiceDiscoveryEntry:
+    Properties:
+      Description: '"yelb-appserver" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: yelb-appserver
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  YelbappserverTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - ap-northeast-2.compute.internal
+        - docker2ecs.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: Yelbappserver_ResolvConf_InitContainer
+      - DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Yelbappserver_ResolvConf_InitContainer
+        Essential: true
+        Image: docker.io/mreferre/yelb-appserver:0.7@sha256:2eeb0594438273da5f22958ebe03cc81b8105685960ada8be12d1b82a2477fe7
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: yelb-appserver
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: YelbappserverTaskExecutionRole
+      Family: docker2ecs-yelb-appserver
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+    Type: AWS::ECS::TaskDefinition
+  YelbappserverTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-appserver
+    Type: AWS::IAM::Role
+  YelbdbService:
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: YelbnetworkNetwork
+          Subnets:
+          - subnet-048279ef1cc125c3d
+          - subnet-04867072f7e3ec9fe
+          - subnet-0f7fd70eef6ce9a3a
+          - subnet-0fa7f1215f585d732
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - YelbdbServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-db
+      TaskDefinition:
+        Ref: YelbdbTaskDefinition
+    Type: AWS::ECS::Service
+  YelbdbServiceDiscoveryEntry:
+    Properties:
+      Description: '"yelb-db" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: yelb-db
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  YelbdbTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - ap-northeast-2.compute.internal
+        - docker2ecs.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: Yelbdb_ResolvConf_InitContainer
+      - DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Yelbdb_ResolvConf_InitContainer
+        Essential: true
+        Image: docker.io/mreferre/yelb-db:0.6@sha256:c30bf7bf29fbce0d661063ec6536993ef881c87eda05f7037bbc30db0f52f493
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: yelb-db
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: YelbdbTaskExecutionRole
+      Family: docker2ecs-yelb-db
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+    Type: AWS::ECS::TaskDefinition
+  YelbdbTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-db
+    Type: AWS::IAM::Role
+  Yelbnetwork80Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: yelb-ui:80/tcp on yelb-network network
+      FromPort: 80
+      GroupId:
+        Ref: YelbnetworkNetwork
+      IpProtocol: TCP
+      ToPort: 80
+    Type: AWS::EC2::SecurityGroupIngress
+  YelbnetworkNetwork:
+    Properties:
+      GroupDescription: docker2ecs Security Group for yelb-network network
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.network
+        Value: docker2ecs_yelb-network
+      VpcId: vpc-04907ae4087ee137d
+    Type: AWS::EC2::SecurityGroup
+  YelbnetworkNetworkIngress:
+    Properties:
+      Description: Allow communication within network yelb-network
+      GroupId:
+        Ref: YelbnetworkNetwork
+      IpProtocol: "-1"
+      SourceSecurityGroupId:
+        Ref: YelbnetworkNetwork
+    Type: AWS::EC2::SecurityGroupIngress
+  YelbuiService:
+    DependsOn:
+    - YelbuiTCP80Listener
+    - YelbappserverService
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+      - ContainerName: yelb-ui
+        ContainerPort: 80
+        TargetGroupArn:
+          Ref: YelbuiTCP80TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: YelbnetworkNetwork
+          Subnets:
+          - subnet-048279ef1cc125c3d
+          - subnet-04867072f7e3ec9fe
+          - subnet-0f7fd70eef6ce9a3a
+          - subnet-0fa7f1215f585d732
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - YelbuiServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-ui
+      TaskDefinition:
+        Ref: YelbuiTaskDefinition
+    Type: AWS::ECS::Service
+  YelbuiServiceDiscoveryEntry:
+    Properties:
+      Description: '"yelb-ui" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: yelb-ui
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  YelbuiTCP80Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: YelbuiTCP80TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 80
+      Protocol: HTTP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  YelbuiTCP80TargetGroup:
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      TargetType: ip
+      VpcId: vpc-04907ae4087ee137d
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  YelbuiTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - ap-northeast-2.compute.internal
+        - docker2ecs.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: Yelbui_ResolvConf_InitContainer
+      - DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Yelbui_ResolvConf_InitContainer
+        Essential: true
+        Image: docker.io/mreferre/yelb-ui:0.10@sha256:800be358f90657cb3fb0f68dc162f3b7399c808d038e1ac746b8848c13d47929
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: docker2ecs
+        Name: yelb-ui
+        PortMappings:
+        - ContainerPort: 80
+          HostPort: 80
+          Protocol: tcp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: YelbuiTaskExecutionRole
+      Family: docker2ecs-yelb-ui
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+    Type: AWS::ECS::TaskDefinition
+  YelbuiTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: docker2ecs
+      - Key: com.docker.compose.service
+        Value: yelb-ui
+    Type: AWS::IAM::Role
