@@ -32,7 +32,15 @@ docker compose up
 
 //Details of the compose stack -> Find the url of LB
 docker compose ps
+
+//Delete cfn stack from AWS
+docker compose down
+
 ```
+
+## Architecture
+![image-79](https://user-images.githubusercontent.com/112446703/226227326-e8c4875d-4d91-4d40-b7e4-ef9881d99af4.png)
+
 ## Reference
 
 - [Yelb Posting](https://aws.amazon.com/ko/blogs/containers/deploy-applications-on-amazon-ecs-using-docker-compose/)
